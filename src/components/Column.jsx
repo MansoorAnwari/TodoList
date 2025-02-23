@@ -1,18 +1,27 @@
-import React from "react";
-import TaskCard from "./TaskCard";
 import { useDroppable } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import TodoItem from "./TodoItem";
 
-const Column = ({ status, tasks }) => {
-    const { setNodeRef } = useDroppable({ id: status });
-
-    const filteredTasks = tasks.filter(task => task.status === status);
+const Column = ({ status, todos }) => {
+    const { setNodeRef, isOver } = useDroppable({
+        id: status,
+        data: { type: "column", status }
+    });
 
     return (
-        <div ref={setNodeRef} className="column">
+        <div
+            ref={setNodeRef}
+            className={`column ${isOver ? "active-dropzone" : ""}`}
+        >
             <h2>{status}</h2>
-            {filteredTasks.map(task => (
-                <TaskCard key={task._id} task={task} />
-            ))}
+            <SortableContext
+                items={todos.map(t => String(t._id))}
+                strategy={verticalListSortingStrategy}
+            >
+                {todos.map(todo => (
+                    <TodoItem key={String(todo._id)} todo={todo} />
+                ))}
+            </SortableContext>
         </div>
     );
 };

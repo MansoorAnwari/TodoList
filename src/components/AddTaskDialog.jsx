@@ -1,39 +1,49 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import * as Yup from "yup";
 
 const validationSchema = Yup.object({
     title: Yup.string()
-        .required("عنوان نمی‌تواند خالی باشد")
-        .min(3, "عنوان باید حداقل ۳ کاراکتر باشد"),
+        .required("عنوان الزامی است")
+        .min(3, "حداقل ۳ کاراکتر"),
     description: Yup.string()
-        .required("توضیحات نمی‌تواند خالی باشد")
-        .min(10, "توضیحات باید حداقل ۱۰ کاراکتر باشد"),
+        .required("توضیحات الزامی است")
+        .min(5, "حداقل ۵ کاراکتر")
 });
 
-const AddTaskDialog = ({ isOpen, onClose, onAdd, isLoading }) => {
+const AddTaskDialog = ({ isOpen, onClose, onAdd }) => {
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [errors, setErrors] = useState({});
+    const [isLoading, setIsLoading] = useState(false);
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-
-        const formData = { title, description };
-
-        try {
-            await validationSchema.validate(formData, { abortEarly: false });
-
-            await onAdd({ ...formData, status: "To Do" });
-
+    useEffect(() => {
+        if (!isOpen) {
             setTitle("");
             setDescription("");
             setErrors({});
+        }
+    }, [isOpen]);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            await validationSchema.validate({ title, description }, { abortEarly: false });
+            setIsLoading(true);
+            await onAdd({ title, description, status: "To Do" });
+            onClose();
         } catch (error) {
-            const newErrors = {};
-            error.inner.forEach((err) => {
-                newErrors[err.path] = err.message;
-            });
-            setErrors(newErrors);
+            if (error instanceof Yup.ValidationError) {
+                const newErrors = {};
+                error.inner.forEach(err => {
+                    newErrors[err.path] = err.message;
+                });
+                setErrors(newErrors);
+            } else {
+                console.error("Add error:", error);
+                alert("خطا در افزودن تسک!");
+            }
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -44,29 +54,49 @@ const AddTaskDialog = ({ isOpen, onClose, onAdd, isLoading }) => {
             <div className="dialog">
                 <h2>افزودن تسک جدید</h2>
                 <form onSubmit={handleSubmit}>
-                    <div>
-                        <label>عنوان:</label>
+                    <div className="form-group">
+                        <label>عنوان تسک</label>
                         <input
                             type="text"
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            required
+                            className={`form-input ${errors.title ? "invalid" : ""}`}
+                            placeholder="مثال: توسعه رابط کاربری"
                         />
                         {errors.title && <span className="error">{errors.title}</span>}
                     </div>
-                    <div>
-                        <label>توضیحات:</label>
+
+                    <div className="form-group">
+                        <label>توضیحات</label>
                         <textarea
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            required
+                            className={`form-textarea ${errors.description ? "invalid" : ""}`}
+                            placeholder="مثال: طراحی کامپوننت‌های اصلی با ری اکت"
+                            rows="4"
                         />
                         {errors.description && <span className="error">{errors.description}</span>}
                     </div>
+
                     <div className="dialog-actions">
-                        <button type="button" onClick={onClose}>لغو</button>
-                        <button type="submit" disabled={isLoading}>
-                            {isLoading ? <div className="spinner"></div> : "افزودن"}
+                        <button
+                            type="button"
+                            className="btn cancel"
+                            onClick={onClose}
+                            disabled={isLoading}
+                        >
+                            لغو
+                        </button>
+                        <button
+                            type="submit"
+                            className="btn save"
+                            disabled={isLoading}
+                        >
+                            {isLoading ? (
+                                <div className="spinner-container">
+                                    <div className="spinner"></div>
+                                </div>
+                            ) : 'ذخیره'}
                         </button>
                     </div>
                 </form>

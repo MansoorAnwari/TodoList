@@ -1,81 +1,112 @@
-import AddTaskDialog from "../components/AddTaskDialog.jsx";
-import TodoItem from "../components/TodoItem.jsx";
-import { useTodo } from "../context/TodoContext.jsx";
 import { useState } from "react";
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { useTodo } from "../context/TodoContext";
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    DragOverlay,
+} from "@dnd-kit/core";
+import { arrayMove } from "@dnd-kit/sortable";
+import Column from "../components/Column";
+import AddTaskDialog from "../components/AddTaskDialog";
+import TodoItem from "../components/TodoItem";
 
 const Home = () => {
-    const { todos, handleAddTodo, handleUpdateTodo } = useTodo();
+    const { todos, setTodos, handleAddTodo, handleUpdateTodo } = useTodo();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
+    const [activeTodo, setActiveTodo] = useState(null);
 
     const sensors = useSensors(
-        useSensor(PointerSensor),
+        useSensor(PointerSensor, {
+            activationConstraint: {
+                distance: 10,
+                delay: 151,
+                tolerance: 0
+            },
+            shouldHandleEvent: (event) => {
+                return !event.target.closest('button');
+            }
+        }),
         useSensor(KeyboardSensor)
     );
 
-    const handleAddTask = async (newTask) => {
-        setIsLoading(true);
-        try {
-            await handleAddTodo(newTask);
-        } catch (error) {
-            console.error("خطا در افزودن تسک:", error);
-        } finally {
-            setIsLoading(false);
-            setIsDialogOpen(false);
-        }
-    };
+    const handleDragEnd = async ({ active, over }) => {
+        if (!over) return;
 
-    const onDragEnd = (event) => {
-        const { active, over } = event;
+        const activeTodo = todos.find((t) => t._id === active.id);
+        const overType = over.data?.current?.type;
 
-        if (active.id !== over.id) {
-            const oldIndex = todos.findIndex((todo) => todo._id === active.id);
-            const newIndex = todos.findIndex((todo) => todo._id === over.id);
-            const newTodos = arrayMove(todos, oldIndex, newIndex);
+        if (overType === "column") {
+            try {
+                await handleUpdateTodo(active.id, {
+                    ...activeTodo,
+                    status: over.id,
+                });
+            } catch (error) {
+                console.error("Drag update failed:", error);
+            }
+        } else {
+            const oldIndex = todos.findIndex((t) => t._id === active.id);
+            const newIndex = todos.findIndex((t) => t._id === over.id);
 
-            handleUpdateTodo(active.id, { status: newTodos[newIndex].status });
+            if (oldIndex !== newIndex) {
+                const newTodos = arrayMove(todos, oldIndex, newIndex);
+                setTodos(newTodos);
+            }
         }
     };
 
     return (
-        <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={onDragEnd}
-            modifiers={[restrictToVerticalAxis]}
-        >
-            <div className="todo-container">
-                <h2 className="todo-title">لیست کارها</h2>
-                <button className="todo-button" onClick={() => setIsDialogOpen(true)}>
-                    افزودن تسک
-                </button>
+        <div className="todo-container">
+            <h1>مدیریت کارها</h1>
 
-                <AddTaskDialog
-                    isOpen={isDialogOpen}
-                    onClose={() => setIsDialogOpen(false)}
-                    onAdd={handleAddTask}
-                    isLoading={isLoading}
-                />
+            <button
+                className="btn add-btn"
+                onClick={() => setIsDialogOpen(true)}
+            >
+                تسک جدید
+            </button>
 
+            <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+                onDragStart={({ active }) => {
+                    setActiveTodo(active.data.current?.todo);
+                }}
+            >
                 <div className="columns">
                     {["To Do", "In Progress", "Done"].map((status) => (
-                        <div key={status} className="column">
-                            <h3>{status}</h3>
-                            <SortableContext items={todos.filter((todo) => todo.status === status)} strategy={verticalListSortingStrategy}>
-                                {todos
-                                    .filter((todo) => todo.status === status)
-                                    .map((todo) => (
-                                        <TodoItem key={todo._id} todo={todo} />
-                                    ))}
-                            </SortableContext>
-                        </div>
+                        <Column
+                            key={status}
+                            status={status}
+                            todos={todos.filter((t) => t.status === status)}
+                        />
                     ))}
                 </div>
-            </div>
-        </DndContext>
+
+                <DragOverlay adjustScale={false}>
+                    {activeTodo && (
+                        <TodoItem
+                            todo={activeTodo}
+                            style={{
+                                transform: "scale(1.05)",
+                                boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+                            }}
+                        />
+                    )}
+                </DragOverlay>
+            </DndContext>
+
+            <AddTaskDialog
+                isOpen={isDialogOpen}
+                onClose={() => setIsDialogOpen(false)}
+                onAdd={handleAddTodo}
+            />
+        </div>
     );
 };
 

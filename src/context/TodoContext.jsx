@@ -1,71 +1,74 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { getTodos, deleteTodo } from "../api/index.js";
 import axios from "axios";
 
-const TodoContext = createContext(undefined);
+const API_URL = "https://todo-api-livid.vercel.app/api/todos";
+
+const TodoContext = createContext();
 
 export const TodoProvider = ({ children }) => {
     const [todos, setTodos] = useState([]);
+
+    const fetchTodos = async () => {
+        try {
+            const { data } = await axios.get(API_URL);
+            setTodos(data.map(todo => ({
+                ...todo,
+                _id: String(todo._id)
+            })));
+        } catch (error) {
+            console.error("Fetch error:", error);
+            alert("خطا در دریافت داده‌ها!");
+        }
+    };
+
+    const createTodo = async (todo) => {
+        try {
+            const { data } = await axios.post(API_URL, todo);
+            setTodos(prev => [...prev, { ...data, _id: String(data._id) }]);
+            return data;
+        } catch (error) {
+            throw error.response?.data || error;
+        }
+    };
+
+    const updateTodo = async (id, updated) => {
+        try {
+            const { data } = await axios.put(`${API_URL}/${id}`, updated);
+            setTodos(prev =>
+                prev.map(t => (t._id === id ? { ...t, ...updated } : t)
+                ));
+            return data;
+        } catch (error) {
+            console.error("Update error:", error);
+            throw error;
+        }
+    };
+
+    const deleteTodo = async (id) => {
+        try {
+            await axios.delete(`${API_URL}/${id}`);
+            setTodos(prev => prev.filter(t => t._id !== String(id)));
+        } catch (error) {
+            console.error("Delete error:", error);
+            throw new Error(error.response?.data?.message || "خطا در حذف");
+        }
+    };
 
     useEffect(() => {
         fetchTodos();
     }, []);
 
-    const fetchTodos = async () => {
-        try {
-            const data = await getTodos();
-            setTodos(data);
-        } catch (error) {
-            // خطا در دریافت تسک‌ها
-        }
-    };
-
-    const handleAddTodo = async (task) => {
-        try {
-            const response = await axios.post("https://todo-api-livid.vercel.app/api/todos", {
-                title: task.title,
-            });
-            const newTodoFromAPI = response.data;
-
-            const newTodo = {
-                ...newTodoFromAPI,
-                description: task.description,
-                status: task.status,
-            };
-
-            setTodos((prevTodos) => [...prevTodos, newTodo]);
-            return newTodo;
-        } catch (error) {
-            throw error;
-        }
-    };
-
-    const handleDeleteTodo = async (id) => {
-        try {
-            await deleteTodo(id);
-            setTodos((prevTodos) => prevTodos.filter((todo) => todo._id !== id));
-        } catch (error) {
-            // خطا در حذف تسک
-        }
-    };
-
-    const handleUpdateTodo = async (id, updatedData) => {
-        try {
-            const response = await axios.put(`https://todo-api-livid.vercel.app/api/todos/${id}`, updatedData);
-            const updatedTodo = response.data;
-
-            setTodos((prevTodos) =>
-                prevTodos.map((todo) => (todo._id === id ? { ...todo, ...updatedTodo } : todo))
-            );
-
-            return updatedTodo;
-        } catch (error) {
-            throw error;
-        }
-    };
-
     return (
-        <TodoContext.Provider value={{ todos, handleAddTodo, handleDeleteTodo, handleUpdateTodo }}>
+        <TodoContext.Provider
+            value={{
+                todos,
+                setTodos,
+                fetchTodos,
+                handleAddTodo: createTodo,
+                handleUpdateTodo: updateTodo,
+                handleDeleteTodo: deleteTodo,
+            }}
+        >
             {children}
         </TodoContext.Provider>
     );
