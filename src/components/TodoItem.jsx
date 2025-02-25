@@ -3,13 +3,12 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useTodo } from "../context/TodoContext";
 
-const TodoItem = React.memo(({ todo, isDragging }) => {
+const TodoItem = ({ todo }) => {
     const { deleteTodo, updateTodo } = useTodo();
     const [isEditing, setIsEditing] = useState(false);
-    const [newTitle, setNewTitle] = useState(todo.title);
-    const [newDescription, setNewDescription] = useState(todo.description);
-    const [errors, setErrors] = useState({});
-    const [isLoading, setIsLoading] = useState(false);
+    const [formData, setFormData] = useState(todo);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     const {
         attributes,
@@ -17,28 +16,37 @@ const TodoItem = React.memo(({ todo, isDragging }) => {
         setNodeRef,
         transform,
         transition,
-    } = useSortable({
-        id: todo._id,
-        data: { todo }
-    });
+        isDragging
+    } = useSortable({ id: todo._id });
 
     const style = {
         transform: CSS.Translate.toString(transform),
-        transition: transition || 'transform 0.1s ease', // کاهش زمان انیمیشن
-        opacity: isDragging ? 0 : 1,
-        zIndex: isDragging ? 9999 : 1,
+        transition: isDragging ? 'none' : 'transform 0.25s ease',
+        opacity: isDragging ? 0.5 : 1,
+        zIndex: isDragging ? 1000 : 1
     };
 
-    const handleEditSubmit = async (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        setIsLoading(true);
         try {
-            await updateTodo(todo._id, { title: newTitle, description: newDescription });
+            setIsSaving(true);
+            await updateTodo(todo._id, formData);
             setIsEditing(false);
         } catch (error) {
-            setErrors(error);
+            console.error("Update error:", error);
         } finally {
-            setIsLoading(false);
+            setIsSaving(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        try {
+            setIsDeleting(true);
+            await deleteTodo(todo._id);
+        } catch (error) {
+            console.error("Deletion error:", error);
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -46,37 +54,49 @@ const TodoItem = React.memo(({ todo, isDragging }) => {
         <div
             ref={setNodeRef}
             style={style}
-            className={`todo-item ${isDragging ? "dragging" : ""}`}
+            className={`todo-item ${isDragging ? 'dragging' : ''}`}
             {...attributes}
-            {...(!isEditing ? listeners : {})}
+            {...listeners}
         >
-            <div className="mobile-handle" {...listeners}>
-                <svg width="24" height="24" viewBox="0 0 24 24">
+            <div
+                className="mobile-handle"
+                {...listeners}
+                style={{ display: isEditing ? "none" : "flex" }}
+            >
+                <svg viewBox="0 0 24 24">
                     <path fill="currentColor" d="M9 14h2V7H9v7zm4 0h2V7h-2v7zM3 6v12h18V6H3z"/>
                 </svg>
             </div>
 
             {isEditing ? (
-                <form onSubmit={handleEditSubmit} className="edit-form">
+                <form onSubmit={handleSubmit} className="edit-form">
                     <input
-                        type="text"
-                        value={newTitle}
-                        onChange={(e) => setNewTitle(e.target.value)}
-                        placeholder="عنوان تسک"
-                        className="form-input"
+                        value={formData.title}
+                        onChange={e => setFormData({...formData, title: e.target.value})}
+                        placeholder="Task title"
+                        required
                     />
                     <textarea
-                        value={newDescription}
-                        onChange={(e) => setNewDescription(e.target.value)}
-                        placeholder="توضیحات تسک"
-                        className="form-textarea"
+                        value={formData.description}
+                        onChange={e => setFormData({...formData, description: e.target.value})}
+                        placeholder="Description"
+                        rows="4"
                     />
                     <div className="actions">
-                        <button type="submit" className="btn save" disabled={isLoading}>
-                            {isLoading ? <div className="spinner" /> : 'ذخیره'}
+                        <button
+                            type="submit"
+                            className={`btn save ${isSaving ? 'loading' : ''}`}
+                            disabled={isSaving}
+                        >
+                            <span>Save</span>
+                            {isSaving && <div className="spinner" />}
                         </button>
-                        <button type="button" className="btn cancel" onClick={() => setIsEditing(false)}>
-                            لغو
+                        <button
+                            type="button"
+                            className="btn cancel"
+                            onClick={() => setIsEditing(false)}
+                        >
+                            Cancel
                         </button>
                     </div>
                 </form>
@@ -90,22 +110,22 @@ const TodoItem = React.memo(({ todo, isDragging }) => {
                         <button
                             className="btn edit"
                             onClick={() => setIsEditing(true)}
-                            disabled={isLoading}
                         >
-                            {isLoading ? <div className="spinner" /> : 'ویرایش'}
+                            Edit
                         </button>
                         <button
-                            className="btn delete"
-                            onClick={() => deleteTodo(todo._id)}
-                            disabled={isLoading}
+                            className={`btn delete ${isDeleting ? 'loading' : ''}`}
+                            onClick={handleDelete}
+                            disabled={isDeleting}
                         >
-                            {isLoading ? <div className="spinner" /> : 'حذف'}
+                            <span>Delete</span>
+                            {isDeleting && <div className="spinner" />}
                         </button>
                     </div>
                 </>
             )}
         </div>
     );
-});
+};
 
-export default TodoItem;
+export default React.memo(TodoItem);

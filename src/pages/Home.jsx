@@ -1,84 +1,112 @@
 import { useState, useCallback } from 'react';
-import { DndContext, closestCorners, PointerSensor, TouchSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
-import { arrayMove } from '@dnd-kit/sortable';
+import {
+    DndContext,
+    PointerSensor,
+    TouchSensor,
+    useSensor,
+    useSensors,
+    DragOverlay,
+    pointerWithin
+} from '@dnd-kit/core';
 import { useTodo } from '../context/TodoContext';
 import Column from '../components/Column';
 import TodoItem from '../components/TodoItem';
 import AddTaskDialog from '../components/AddTaskDialog';
 
 const Home = () => {
-    const { todos, updateTodo, setTodos } = useTodo();
+    const { todos, setTodos, updateTodo } = useTodo();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [activeTodo, setActiveTodo] = useState(null);
 
-    // بهینه‌سازی تنظیمات سنسورها
     const sensors = useSensors(
         useSensor(PointerSensor, {
             activationConstraint: {
-                distance: 5, // کاهش فاصله فعال‌سازی درگ
-            },
+                distance: 2,
+                tolerance: { x: 5, y: 5 }
+            }
         }),
         useSensor(TouchSensor, {
             activationConstraint: {
-                delay: 50, // کاهش تاخیر فعال‌سازی درگ
-                tolerance: 10, // کاهش تلرانس
-            },
+                delay: 150,
+                tolerance: 5
+            }
         })
     );
 
-    const handleDragStart = useCallback(({ active }) => {
-        setActiveTodo(active.data.current?.todo);
-    }, []);
-
     const handleDragEnd = useCallback(async ({ active, over }) => {
+        if (!active || !over) return;
+
+        const activeId = active.id;
+        const overId = over.id;
+
+        // If dropped on itself
+        if (activeId === overId) return;
+
+        // Get items
+        const activeTodo = todos.find(t => t._id === activeId);
+        const overTodo = todos.find(t => t._id === overId);
+
+        // Determine target type
+        const isSameColumn = activeTodo.status === overTodo?.status;
+        const isOverColumn = over.data.current?.type === 'column';
+
+        // Calculate new position
+        let newStatus = activeTodo.status;
+        let newPosition = 0;
+
+        if (isOverColumn) {
+            // Dragging to new column
+            newStatus = over.data.current.status;
+            newPosition = todos.filter(t => t.status === newStatus).length;
+        } else {
+            // Dragging over another item
+            newStatus = overTodo.status;
+            const targetTodos = todos.filter(t => t.status === newStatus);
+            const overIndex = targetTodos.findIndex(t => t._id === overId);
+            newPosition = overIndex >= 0 ? overIndex : targetTodos.length;
+        }
+
+        // Create new array
+        let newTodos = [...todos];
+
+        // Remove old item
+        newTodos = newTodos.filter(t => t._id !== activeId);
+
+        // Add to new position
+        newTodos.splice(newPosition, 0, {
+            ...activeTodo,
+            status: newStatus,
+            position: newPosition
+        });
+
+        // Update all positions
+        newTodos = newTodos.map((todo, index) => ({
+            ...todo,
+            position: index
+        }));
+
+        setTodos(newTodos);
+
         try {
-            if (!active || !over) return;
-
-            // حالت 1: جابجایی درون یک ستون
-            if (active.data.current?.todo?.status === over.data.current?.todo?.status) {
-                const oldIndex = todos.findIndex(t => t._id === active.id);
-                const newIndex = todos.findIndex(t => t._id === over.id);
-                if (oldIndex === newIndex) return;
-
-                const newTodos = arrayMove(todos, oldIndex, newIndex);
-                setTodos(newTodos);
-            }
-            // حالت 2: انتقال بین ستون‌ها
-            else {
-                const activeTodo = active.data.current.todo;
-                const newStatus = over.data.current?.type === "column"
-                    ? over.id
-                    : over.data.current?.todo.status;
-
-                if (!newStatus) return;
-
-                const newPosition = todos.filter(t => t.status === newStatus).length;
-
-                const updatedTodo = {
-                    ...activeTodo,
-                    status: newStatus,
-                    position: newPosition
-                };
-
-                await updateTodo(activeTodo._id, updatedTodo);
-                setTodos(prev => prev.map(t =>
-                    t._id === activeTodo._id ? updatedTodo : t
-                ));
-            }
+            await updateTodo(activeId, {
+                status: newStatus,
+                position: newPosition
+            });
         } catch (error) {
-            console.error("خطا در جابجایی:", error);
-            setTodos([...todos]);
-        } finally {
-            setActiveTodo(null);
+            console.error("Update error:", error);
+            setTodos(todos);
         }
     }, [todos, updateTodo]);
 
     return (
         <div className="todo-container">
-            <h1>مدیریت کارها</h1>
+            <h1 className="main-title">Task Management</h1>
 
-            <button className="btn add-btn" onClick={() => setIsDialogOpen(true)}>
-                تسک جدید
+            <button
+                className="btn add-btn"
+                onClick={() => setIsDialogOpen(true)}
+            >
+                ＋ Add New Task
             </button>
 
             <AddTaskDialog
@@ -88,8 +116,10 @@ const Home = () => {
 
             <DndContext
                 sensors={sensors}
-                collisionDetection={closestCorners}
-                onDragStart={handleDragStart}
+                collisionDetection={pointerWithin}
+                onDragStart={({ active }) =>
+                    setActiveTodo(todos.find(t => t._id === active.id))
+                }
                 onDragEnd={handleDragEnd}
             >
                 <div className="columns">
@@ -103,8 +133,8 @@ const Home = () => {
                     ))}
                 </div>
 
-                <DragOverlay adjustScale={false}>
-                    {activeTodo && <TodoItem todo={activeTodo} isDragging />}
+                <DragOverlay>
+                    {activeTodo && <TodoItem todo={activeTodo} isDragging={true} />}
                 </DragOverlay>
             </DndContext>
         </div>

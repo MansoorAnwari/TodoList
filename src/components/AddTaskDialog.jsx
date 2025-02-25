@@ -2,15 +2,19 @@ import { useState } from 'react';
 import { useTodo } from '../context/TodoContext';
 import * as Yup from 'yup';
 
-const validationSchema = Yup.object({
+const taskSchema = Yup.object().shape({
     title: Yup.string()
-        .required('عنوان الزامی است')
-        .min(3, 'حداقل ۳ کاراکتر')
-        .test('not-blank', 'عنوان نمی‌تواند فقط فاصله باشد', value => value?.trim().length > 0),
+        .trim()
+        .required('Title is required')
+        .min(3, 'Title must be at least 3 characters')
+        .max(50, 'Title cannot exceed 50 characters')
+        .test('no-whitespace', 'Title cannot be empty', value => value.trim().length > 0),
     description: Yup.string()
-        .required('توضیحات الزامی است')
-        .min(5, 'حداقل ۵ کاراکتر')
-        .test('not-blank', 'توضیحات نمی‌تواند فقط فاصله باشد', value => value?.trim().length > 0)
+        .trim()
+        .required('Description is required')
+        .min(5, 'Description must be at least 5 characters')
+        .max(200, 'Description cannot exceed 200 characters')
+        .test('no-whitespace', 'Description cannot be empty', value => value.trim().length > 0)
 });
 
 const AddTaskDialog = ({ isOpen, onClose }) => {
@@ -18,17 +22,18 @@ const AddTaskDialog = ({ isOpen, onClose }) => {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [errors, setErrors] = useState({});
-    const [isLoading, setIsLoading] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setIsLoading(true);
         try {
-            await validationSchema.validate({ title, description }, { abortEarly: false });
-            await addTodo(title, description);
+            setIsSubmitting(true);
+            await taskSchema.validate({ title, description }, { abortEarly: false });
+            await addTodo(title.trim(), description.trim());
             setTitle('');
             setDescription('');
             onClose();
+            setErrors({});
         } catch (error) {
             if (error instanceof Yup.ValidationError) {
                 const validationErrors = {};
@@ -37,10 +42,10 @@ const AddTaskDialog = ({ isOpen, onClose }) => {
                 });
                 setErrors(validationErrors);
             } else {
-                alert(error.message);
+                setErrors({ general: error.message || 'Error creating task' });
             }
         } finally {
-            setIsLoading(false);
+            setIsSubmitting(false);
         }
     };
 
@@ -49,42 +54,64 @@ const AddTaskDialog = ({ isOpen, onClose }) => {
     return (
         <div className="dialog-overlay">
             <div className="dialog">
-                <h2>تسک جدید</h2>
+                <h2>Create New Task</h2>
+
+                {errors.general && (
+                    <div className="error" style={{ color: 'var(--danger)', marginBottom: '1rem' }}>
+                        {errors.general}
+                    </div>
+                )}
+
                 <form onSubmit={handleSubmit}>
                     <div className="form-group">
-                        <label>عنوان:</label>
                         <input
-                            type="text"
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                             className={errors.title ? 'invalid' : ''}
+                            placeholder="Task Title"
+                            disabled={isSubmitting}
+                            style={{ width: '100%' }}
                         />
-                        {errors.title && <div className="error">{errors.title}</div>}
+                        {errors.title &&
+                            <div className="error" style={{ color: 'var(--danger)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                                {errors.title}
+                            </div>}
                     </div>
+
                     <div className="form-group">
-                        <label>توضیحات:</label>
                         <textarea
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             className={errors.description ? 'invalid' : ''}
+                            placeholder="Task Description"
+                            rows="4"
+                            disabled={isSubmitting}
+                            style={{ width: '100%' }}
                         />
-                        {errors.description && <div className="error">{errors.description}</div>}
+                        {errors.description &&
+                            <div className="error" style={{ color: 'var(--danger)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                                {errors.description}
+                            </div>}
                     </div>
+
                     <div className="dialog-actions">
+                        <button
+                            type="submit"
+                            className={`btn save ${isSubmitting ? 'loading' : ''}`}
+                            disabled={isSubmitting}
+                            style={{ minWidth: '120px' }}
+                        >
+                            <span>{isSubmitting ? 'Creating...' : 'Create Task'}</span>
+                            {isSubmitting && <div className="spinner" />}
+                        </button>
+
                         <button
                             type="button"
                             className="btn cancel"
                             onClick={onClose}
-                            disabled={isLoading}
+                            disabled={isSubmitting}
                         >
-                            لغو
-                        </button>
-                        <button
-                            type="submit"
-                            className="btn save"
-                            disabled={isLoading}
-                        >
-                            {isLoading ? <div className="spinner" /> : 'ایجاد تسک'}
+                            Cancel
                         </button>
                     </div>
                 </form>
