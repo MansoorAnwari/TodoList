@@ -1,56 +1,90 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import axios from "axios";
+import * as Yup from 'yup';
 
 const API_URL = "https://todo-api-livid.vercel.app/api/todos";
 
 const TodoContext = createContext();
 
+// اعتبارسنجی داده‌ها با Yup
+const todoSchema = Yup.object({
+    title: Yup.string()
+        .required("عنوان الزامی است")
+        .min(3, "عنوان باید حداقل ۳ کاراکتر باشد")
+        .test('not-blank', 'عنوان نمی‌تواند فقط فاصله باشد', value => value?.trim().length > 0),
+    description: Yup.string()
+        .required("توضیحات الزامی است")
+        .min(5, "توضیحات باید حداقل ۵ کاراکتر باشد")
+        .test('not-blank', 'توضیحات نمی‌تواند فقط فاصله باشد', value => value?.trim().length > 0)
+});
+
 export const TodoProvider = ({ children }) => {
     const [todos, setTodos] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    const fetchTodos = async () => {
+    const fetchTodos = async (retry = 3) => {
         try {
             const { data } = await axios.get(API_URL);
-            setTodos(data.map(todo => ({
-                ...todo,
-                _id: String(todo._id)
-            })));
+            setTodos(data.sort((a, b) => a.position - b.position));
         } catch (error) {
-            console.error("Fetch error:", error);
-            alert("خطا در دریافت داده‌ها!");
+            if (retry > 0) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                return fetchTodos(retry - 1);
+            }
+            console.error("خطا در دریافت داده:", error);
+        } finally {
+            setLoading(false);
         }
     };
 
-    const createTodo = async (todo) => {
+    const addTodo = async (title, description) => {
         try {
-            const { data } = await axios.post(API_URL, todo);
-            setTodos(prev => [...prev, { ...data, _id: String(data._id) }]);
-            return data;
-        } catch (error) {
-            throw error.response?.data || error;
-        }
-    };
+            await todoSchema.validate({ title, description }, { abortEarly: false });
 
-    const updateTodo = async (id, updated) => {
-        try {
-            const { data } = await axios.put(`${API_URL}/${id}`, updated);
-            setTodos(prev =>
-                prev.map(t => (t._id === id ? { ...t, ...updated } : t)
-                ));
+            const { data } = await axios.post(API_URL, {
+                title: title.trim(),
+                description: description.trim(),
+                status: "To Do",
+                position: Date.now()
+            });
+            setTodos(prev => [...prev, data]);
             return data;
         } catch (error) {
-            console.error("Update error:", error);
-            throw error;
+            if (error instanceof Yup.ValidationError) {
+                const validationErrors = {};
+                error.inner.forEach(err => {
+                    validationErrors[err.path] = err.message;
+                });
+                throw validationErrors;
+            } else {
+                console.error("خطا در ایجاد تسک:", error);
+                throw new Error(error.response?.data?.error || "خطا در ایجاد تسک");
+            }
         }
     };
 
     const deleteTodo = async (id) => {
         try {
             await axios.delete(`${API_URL}/${id}`);
-            setTodos(prev => prev.filter(t => t._id !== String(id)));
+            setTodos(prev => prev.filter(todo => todo._id !== id));
         } catch (error) {
-            console.error("Delete error:", error);
-            throw new Error(error.response?.data?.message || "خطا در حذف");
+            console.error("خطا در حذف تسک:", error);
+            throw error;
+        }
+    };
+
+    const updateTodo = async (id, updatedData) => {
+        try {
+            const { data } = await axios.put(`${API_URL}/${id}`, updatedData);
+            setTodos(prev =>
+                prev.map(todo =>
+                    todo._id === id ? { ...todo, ...data } : todo
+                ).sort((a, b) => a.position - b.position)
+            );
+            return data;
+        } catch (error) {
+            console.error("خطا در آپدیت:", error);
+            throw error;
         }
     };
 
@@ -62,11 +96,11 @@ export const TodoProvider = ({ children }) => {
         <TodoContext.Provider
             value={{
                 todos,
-                setTodos,
-                fetchTodos,
-                handleAddTodo: createTodo,
-                handleUpdateTodo: updateTodo,
-                handleDeleteTodo: deleteTodo,
+                loading,
+                addTodo,
+                deleteTodo,
+                updateTodo,
+                setTodos
             }}
         >
             {children}

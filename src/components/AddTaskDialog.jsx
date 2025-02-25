@@ -1,46 +1,43 @@
-import { useState, useEffect } from "react";
-import * as Yup from "yup";
+import { useState } from 'react';
+import { useTodo } from '../context/TodoContext';
+import * as Yup from 'yup';
 
 const validationSchema = Yup.object({
     title: Yup.string()
-        .required("عنوان الزامی است")
-        .min(3, "حداقل ۳ کاراکتر"),
+        .required('عنوان الزامی است')
+        .min(3, 'حداقل ۳ کاراکتر')
+        .test('not-blank', 'عنوان نمی‌تواند فقط فاصله باشد', value => value?.trim().length > 0),
     description: Yup.string()
-        .required("توضیحات الزامی است")
-        .min(5, "حداقل ۵ کاراکتر")
+        .required('توضیحات الزامی است')
+        .min(5, 'حداقل ۵ کاراکتر')
+        .test('not-blank', 'توضیحات نمی‌تواند فقط فاصله باشد', value => value?.trim().length > 0)
 });
 
-const AddTaskDialog = ({ isOpen, onClose, onAdd }) => {
-    const [title, setTitle] = useState("");
-    const [description, setDescription] = useState("");
+const AddTaskDialog = ({ isOpen, onClose }) => {
+    const { addTodo } = useTodo();
+    const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
     const [errors, setErrors] = useState({});
     const [isLoading, setIsLoading] = useState(false);
 
-    useEffect(() => {
-        if (!isOpen) {
-            setTitle("");
-            setDescription("");
-            setErrors({});
-        }
-    }, [isOpen]);
-
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setIsLoading(true);
         try {
             await validationSchema.validate({ title, description }, { abortEarly: false });
-            setIsLoading(true);
-            await onAdd({ title, description, status: "To Do" });
+            await addTodo(title, description);
+            setTitle('');
+            setDescription('');
             onClose();
         } catch (error) {
             if (error instanceof Yup.ValidationError) {
-                const newErrors = {};
+                const validationErrors = {};
                 error.inner.forEach(err => {
-                    newErrors[err.path] = err.message;
+                    validationErrors[err.path] = err.message;
                 });
-                setErrors(newErrors);
+                setErrors(validationErrors);
             } else {
-                console.error("Add error:", error);
-                alert("خطا در افزودن تسک!");
+                alert(error.message);
             }
         } finally {
             setIsLoading(false);
@@ -52,32 +49,27 @@ const AddTaskDialog = ({ isOpen, onClose, onAdd }) => {
     return (
         <div className="dialog-overlay">
             <div className="dialog">
-                <h2>افزودن تسک جدید</h2>
+                <h2>تسک جدید</h2>
                 <form onSubmit={handleSubmit}>
                     <div className="form-group">
-                        <label>عنوان تسک</label>
+                        <label>عنوان:</label>
                         <input
                             type="text"
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            className={`form-input ${errors.title ? "invalid" : ""}`}
-                            placeholder="مثال: توسعه رابط کاربری"
+                            className={errors.title ? 'invalid' : ''}
                         />
-                        {errors.title && <span className="error">{errors.title}</span>}
+                        {errors.title && <div className="error">{errors.title}</div>}
                     </div>
-
                     <div className="form-group">
-                        <label>توضیحات</label>
+                        <label>توضیحات:</label>
                         <textarea
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            className={`form-textarea ${errors.description ? "invalid" : ""}`}
-                            placeholder="مثال: طراحی کامپوننت‌های اصلی با ری اکت"
-                            rows="4"
+                            className={errors.description ? 'invalid' : ''}
                         />
-                        {errors.description && <span className="error">{errors.description}</span>}
+                        {errors.description && <div className="error">{errors.description}</div>}
                     </div>
-
                     <div className="dialog-actions">
                         <button
                             type="button"
@@ -92,11 +84,7 @@ const AddTaskDialog = ({ isOpen, onClose, onAdd }) => {
                             className="btn save"
                             disabled={isLoading}
                         >
-                            {isLoading ? (
-                                <div className="spinner-container">
-                                    <div className="spinner"></div>
-                                </div>
-                            ) : 'ذخیره'}
+                            {isLoading ? <div className="spinner" /> : 'ایجاد تسک'}
                         </button>
                     </div>
                 </form>

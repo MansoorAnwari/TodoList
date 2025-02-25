@@ -1,31 +1,15 @@
+import React, { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useTodo } from "../context/TodoContext";
-import { useState } from "react";
-import * as Yup from "yup";
 
-const validationSchema = Yup.object({
-    title: Yup.string()
-        .required("عنوان الزامی است")
-        .min(3, "حداقل ۳ کاراکتر"),
-    description: Yup.string()
-        .required("توضیحات الزامی است")
-        .min(5, "حداقل ۵ کاراکتر")
-});
-
-const TodoItem = ({ todo }) => {
-    const { handleDeleteTodo, handleUpdateTodo } = useTodo();
+const TodoItem = React.memo(({ todo, isDragging }) => {
+    const { deleteTodo, updateTodo } = useTodo();
     const [isEditing, setIsEditing] = useState(false);
     const [newTitle, setNewTitle] = useState(todo.title);
     const [newDescription, setNewDescription] = useState(todo.description);
     const [errors, setErrors] = useState({});
     const [isLoading, setIsLoading] = useState(false);
-
-    const todoId = String(todo._id);
-
-    const shouldHandleDrag = (event) => {
-        return !event.target.closest('button');
-    };
 
     const {
         attributes,
@@ -33,76 +17,26 @@ const TodoItem = ({ todo }) => {
         setNodeRef,
         transform,
         transition,
-        isDragging
     } = useSortable({
-        id: todoId,
-        data: {
-            type: "item",
-            todo: {
-                ...todo,
-                _id: todoId
-            }
-        },
-        activators: {
-            onKeyDown: () => {},
-            onMouseDown: (event) => {
-                if (shouldHandleDrag(event)) listeners.onMouseDown(event);
-            },
-            onTouchStart: (event) => {
-                if (shouldHandleDrag(event)) listeners.onTouchStart(event);
-            }
-        }
+        id: todo._id,
+        data: { todo }
     });
 
     const style = {
         transform: CSS.Translate.toString(transform),
-        transition: transition || "all 0.15s ease",
-        zIndex: isDragging ? 1000 : 1,
-        opacity: isDragging ? 0.8 : 1,
+        transition: transition || 'transform 0.1s ease', // کاهش زمان انیمیشن
+        opacity: isDragging ? 0 : 1,
+        zIndex: isDragging ? 9999 : 1,
     };
 
-    const handleSave = async (e) => {
+    const handleEditSubmit = async (e) => {
         e.preventDefault();
+        setIsLoading(true);
         try {
-            await validationSchema.validate(
-                { title: newTitle, description: newDescription },
-                { abortEarly: false }
-            );
-
-            setIsLoading(true);
-            await handleUpdateTodo(todoId, {
-                title: newTitle,
-                description: newDescription,
-                status: todo.status
-            });
+            await updateTodo(todo._id, { title: newTitle, description: newDescription });
             setIsEditing(false);
-            setErrors({});
         } catch (error) {
-            if (error instanceof Yup.ValidationError) {
-                const newErrors = {};
-                error.inner.forEach((err) => {
-                    newErrors[err.path] = err.message;
-                });
-                setErrors(newErrors);
-            } else {
-                console.error("Update error:", error);
-                alert("خطا در بروزرسانی!");
-            }
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleDelete = async (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-
-        try {
-            setIsLoading(true);
-            await handleDeleteTodo(todoId);
-        } catch (error) {
-            console.error("Delete error:", error);
-            alert("خطای سرور: " + (error.response?.data?.message || "خطا در حذف!"));
+            setErrors(error);
         } finally {
             setIsLoading(false);
         }
@@ -112,49 +46,40 @@ const TodoItem = ({ todo }) => {
         <div
             ref={setNodeRef}
             style={style}
-            {...attributes}
-            {...listeners}
             className={`todo-item ${isDragging ? "dragging" : ""}`}
+            {...attributes}
+            {...(!isEditing ? listeners : {})}
         >
+            <div className="mobile-handle" {...listeners}>
+                <svg width="24" height="24" viewBox="0 0 24 24">
+                    <path fill="currentColor" d="M9 14h2V7H9v7zm4 0h2V7h-2v7zM3 6v12h18V6H3z"/>
+                </svg>
+            </div>
+
             {isEditing ? (
-                <div className="edit-form">
+                <form onSubmit={handleEditSubmit} className="edit-form">
                     <input
                         type="text"
                         value={newTitle}
                         onChange={(e) => setNewTitle(e.target.value)}
-                        className={`form-input ${errors.title ? "invalid" : ""}`}
-                        placeholder="عنوان"
+                        placeholder="عنوان تسک"
+                        className="form-input"
                     />
-                    {errors.title && <span className="error">{errors.title}</span>}
-
                     <textarea
                         value={newDescription}
                         onChange={(e) => setNewDescription(e.target.value)}
-                        className={`form-textarea ${errors.description ? "invalid" : ""}`}
-                        placeholder="توضیحات"
-                        rows="3"
+                        placeholder="توضیحات تسک"
+                        className="form-textarea"
                     />
-                    {errors.description && <span className="error">{errors.description}</span>}
-
-                    <div className="form-actions">
-                        <button
-                            className="btn save"
-                            onClick={handleSave}
-                            disabled={isLoading}
-                        >
-                            {isLoading ? <div className="spinner" /> : "ذخیره"}
+                    <div className="actions">
+                        <button type="submit" className="btn save" disabled={isLoading}>
+                            {isLoading ? <div className="spinner" /> : 'ذخیره'}
                         </button>
-                        <button
-                            className="btn cancel"
-                            onClick={(e) => {
-                                e.preventDefault();
-                                setIsEditing(false);
-                            }}
-                        >
+                        <button type="button" className="btn cancel" onClick={() => setIsEditing(false)}>
                             لغو
                         </button>
                     </div>
-                </div>
+                </form>
             ) : (
                 <>
                     <div className="content">
@@ -164,26 +89,23 @@ const TodoItem = ({ todo }) => {
                     <div className="actions">
                         <button
                             className="btn edit"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setIsEditing(true);
-                            }}
+                            onClick={() => setIsEditing(true)}
                             disabled={isLoading}
                         >
-                            {isLoading ? <div className="spinner" /> : "ویرایش"}
+                            {isLoading ? <div className="spinner" /> : 'ویرایش'}
                         </button>
                         <button
                             className="btn delete"
-                            onClick={handleDelete}
+                            onClick={() => deleteTodo(todo._id)}
                             disabled={isLoading}
                         >
-                            {isLoading ? <div className="spinner" /> : "حذف"}
+                            {isLoading ? <div className="spinner" /> : 'حذف'}
                         </button>
                     </div>
                 </>
             )}
         </div>
     );
-};
+});
 
 export default TodoItem;
