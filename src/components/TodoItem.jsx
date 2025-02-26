@@ -15,7 +15,6 @@ const TodoItem = ({ todo }) => {
         listeners,
         setNodeRef,
         transform,
-        transition,
         isDragging
     } = useSortable({ id: todo._id });
 
